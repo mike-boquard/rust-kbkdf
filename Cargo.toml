@@ -9,6 +9,7 @@ repository = "https://gitlab.com/michael.j.boquard/rust-kbkdf"
 readme = "README.md"
 keywords = ["kdf", "crypto", "sp800-108"]
 categories = ["crypto"]
+exclude = [ ".idea/" ]
 
 [dependencies]
 
