@@ -1,5 +1,5 @@
 // Author's note:
-// I kind of went to down on the AES-192 PRF and did all the combos (different counter length,
+// I kind of went to town on the AES-192 PRF and did all the combos (different counter length,
 // output length, counter position, etc.) and then I realized that was a lot of work to repeat the
 // same thing over and over again, so after AES-128, I'm just going to do the largest output, with
 // the largest counter length, for each position

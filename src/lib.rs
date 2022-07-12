@@ -1,11 +1,45 @@
-//! Rust implementation of NIST SP800-108 KBKDF
+//! # Rust Implementation of NIST SP800-108 Key Based Key Derivation Function (KBKDF)
+//!
+//! This crate provides a Rust implementation of the [NIST SP800-108](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-108.pdf)
+//! standard for performing key-derivation based on a source key.
+//!
+//! This crate implements the KBKDF in the following modes:
+//!
+//! * Counter
+//! * Feedback
+//! * Double-Pipeline Iteration
+//!
+//! This crate was designed such that the user may provide their own Pseudo Random Function (as defined in Section 4 of
+//! [SP800-108](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-108.pdf)) via the implementation of
+//! two traits:
+//!
+//! * [`PseudoRandomFunctionKey`]
+//! * [`PseudoRandomFunction`]
+//!
+//! ## Psuedo Random Function Trait
+//!
+//! The purpose of the PRF trait is to allow a user to provide their own implementation of a PRF (as defined in Section 4
+//! of [SP800-108](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-108.pdf)).
+//!
+//! **Please note, that in order for an implementation of KBKDF to be NIST approved, an approved PRF must be used!**
+//!
+//! The author of this crate _does not_ guarantee that this implementation is NIST approved!
+//!
+//! ## Pseudo Random Function Key
+//!
+//! This trait is used to ensure that the implementation of the `PseudoRandomFunction` trait can access the necessary
+//! source key in a way that passes Rust's borrow checker.
+//!
+//! ## Example
+//!
+//! An example of how to use the two traits are found in the `tests` module utilizing the [OpenSSL Crate](https://crates.io/crates/openssl).
 
 // This list comes from
 // https://github.com/rust-unofficial/patterns/blob/master/anti_patterns/deny-warnings.md
 #![deny(
 bad_style,
 const_err,
-//dead_code,
+dead_code,
 improper_ctypes,
 rustdoc::missing_doc_code_examples,
 rustdoc::broken_intra_doc_links,
@@ -16,7 +50,7 @@ path_statements,
 patterns_in_fns_without_body,
 private_in_public,
 unconditional_recursion,
-//unused,
+unused,
 unused_allocation,
 unused_comparisons,
 unused_parens,
@@ -67,7 +101,7 @@ pub trait PseudoRandomFunction<'a> {
     ///
     /// # Panics
     ///
-    /// This function is allowed to panic if [`prf_init`] is called while already initialized
+    /// This function is allowed to panic if [`prf_init`](PseudoRandomFunction::prf_init) is called while already initialized
     fn prf_init(
         &mut self,
         key: &'a dyn PseudoRandomFunctionKey<KeyHandle = Self::KeyHandle>,
@@ -85,7 +119,8 @@ pub trait PseudoRandomFunction<'a> {
     ///
     /// # Panics
     ///
-    /// This function is allowed to panic if [`prf_update`] is called before [`prf_init`]
+    /// This function is allowed to panic if [`prf_update`](PseudoRandomFunction::prf_update)
+    /// is called before [`prf_init`](PseudoRandomFunction::prf_init)
     fn prf_update(&mut self, msg: &[u8]) -> Result<(), Error>;
 
     /// Finishes the PRF and returns the value in a buffer
@@ -100,7 +135,8 @@ pub trait PseudoRandomFunction<'a> {
     ///
     /// # Panics
     ///
-    /// This function is allowed to panic if [`prf_final`] is called before [`prf_init`]
+    /// This function is allowed to panic if [`prf_final`](PseudoRandomFunction::prf_final)
+    /// is called before [`prf_init`](PseudoRandomFunction::prf_init)
     fn prf_final(&mut self, out: &mut [u8]) -> Result<usize, Error>;
 
     /// Finishes the PRF and returns the result in a `Vec<u8>`
@@ -111,7 +147,8 @@ pub trait PseudoRandomFunction<'a> {
     ///
     /// # Panics
     ///
-    /// This function is allowed to panic if [`prf_final_vec`] is called before [`prf_init`]
+    /// This function is allowed to panic if [`prf_final_vec`](PseudoRandomFunction::prf_final_vec)
+    /// is called before [`prf_init`](PseudoRandomFunction::prf_init)
     fn prf_final_vec(&mut self) -> Result<Vec<u8>, Error> {
         let mut out = vec![0; self.prf_output_size_in_bits() / 8];
 
@@ -200,7 +237,20 @@ pub enum InputType<'a> {
     SpecifiedInput(SpecifiedInput<'a>),
 }
 
-/// Performs SP800-108 Based KBKDF
+/// Performs [SP800-108](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-108.pdf)
+/// key-based key derivation function
+///
+/// # Inputs
+///
+/// * `kdf_mode` - Which mode the the derivation function will run in
+/// * `input_type` - The type of input used to derive the key
+/// * `key` - The base key to use to derive the key
+/// * `prf` - The Pseudo-random function used to derive the key
+/// * `derived_key` - The output key
+///
+/// # Panics
+///
+/// If invalid options are provided, this function will panic
 pub fn kbkdf<'a, T: PseudoRandomFunction<'a>>(
     kdf_mode: &KDFMode,
     input_type: &InputType,
@@ -306,10 +356,7 @@ fn kbkdf_double_pipeline<'a, T: PseudoRandomFunction<'a>>(
         assert!(feedback.len() >= (prf.prf_output_size_in_bits() / 8));
         for i in 1..=n {
             let counter = i.to_be_bytes();
-            let counter: Option<&[u8]> = match double_feedback.counter_length {
-                None => None,
-                Some(length) => Some(&counter[(counter.len() - length / 8)..]),
-            };
+            let counter = feedback_counter(double_feedback.counter_length, counter.as_slice());
             prf.prf_init(key)?;
             prf.prf_update(feedback.as_slice())?;
             let len = prf.prf_final(feedback.as_mut_slice())?;
@@ -396,10 +443,7 @@ fn kbkdf_feedback<'a, T: PseudoRandomFunction<'a>>(
         for i in 1..=n {
             prf.prf_init(key)?;
             let counter = i.to_be_bytes();
-            let counter: Option<&[u8]> = match feedback_mode.counter_length {
-                None => None,
-                Some(length) => Some(&counter[(counter.len() - length / 8)..]),
-            };
+            let counter = feedback_counter(feedback_mode.counter_length, counter.as_slice());
             match input_type {
                 InputType::FixedInput(fixed_input) => {
                     match fixed_input.counter_location {
@@ -463,5 +507,12 @@ fn calculate_counter(derived_key_len_bits: usize, prf_output_size_in_bits: usize
         1
     } else {
         0
+    }
+}
+
+fn feedback_counter(counter_length: Option<usize>, counter: &[u8]) -> Option<&[u8]> {
+    match counter_length {
+        None => None,
+        Some(length) => Some(&counter[(counter.len() - length / 8)..]),
     }
 }
