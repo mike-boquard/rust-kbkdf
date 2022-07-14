@@ -12,6 +12,9 @@ categories = ["cryptography"]
 exclude = [ ".idea/" ]
 
 [dependencies]
+generic-array = "0.14"
+typenum = "1.15"
+zeroize = "1.5.6"
 
 [dev-dependencies]
 openssl = "0.10"

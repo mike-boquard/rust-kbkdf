@@ -1,6 +1,6 @@
 use rust_kbkdf::{Error, PseudoRandomFunction, PseudoRandomFunctionKey};
 use openssl::error::ErrorStack;
-use openssl::pkey::{PKey, Private};
+use openssl::pkey::{Id, PKey, Private};
 use openssl::sign::Signer;
 use openssl::symm::Cipher;
 use std::fmt::Formatter;
@@ -34,15 +34,14 @@ impl PseudoRandomFunctionKey for AesCmacKey {
     }
 }
 
+#[derive(Default)]
 pub struct AesCmac<'a> {
-    cipher: Cipher,
     signer: Option<Signer<'a>>,
 }
 
 impl AesCmac<'_> {
-    pub fn new(cipher: Cipher) -> Self {
+    pub fn new() -> Self {
         Self {
-            cipher,
             signer: None,
         }
     }
@@ -67,6 +66,7 @@ impl AesCmac<'_> {
 impl<'a> AesCmac<'a> {
     fn prf_init_internal(&mut self, key: &'a PKey<Private>) -> Result<(), SSLError> {
         assert!(self.signer.is_none());
+        assert_eq!(key.id(), Id::CMAC);
         self.signer = Some(Signer::new_without_digest(key)?);
         Ok(())
     }
@@ -99,9 +99,7 @@ impl From<SSLError> for Error {
 
 impl<'a> PseudoRandomFunction<'a> for AesCmac<'a> {
     type KeyHandle = PKey<Private>;
-    fn prf_output_size_in_bits(&self) -> usize {
-        self.cipher.block_size() * 8
-    }
+    type PrfOutputSize = typenum::U16;
 
     fn prf_init(
         &mut self,

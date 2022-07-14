@@ -3,7 +3,6 @@ mod aes_cmac_prf;
 use aes_cmac_prf::*;
 
 use rust_kbkdf::{kbkdf, CounterLocation, DoublePipelineIterationMode, FixedInput, InputType, KDFMode};
-use openssl::symm::Cipher;
 
 #[test]
 fn cmac_aes_128_no_counter_512_bit_output() {
@@ -11,7 +10,7 @@ fn cmac_aes_128_no_counter_512_bit_output() {
     let fixed_input = hex::decode("335660eb265d2044efa06eacd848d3f9f57d219011343318f3a964df4a6fb1bf6cbdee711c7fcbe73b8f257f992e47e8b065af").expect("Failed to decode fixed input");
 
     let key = AesCmacKey::new(key.as_slice()).expect("Failed to load AES Cmac Key");
-    let mut prf = AesCmac::new(Cipher::aes_128_cbc());
+    let mut prf = AesCmac::new();
 
     let mode = KDFMode::DoublePipelineIterationMode(DoublePipelineIterationMode {
         counter_length: None,
@@ -37,7 +36,7 @@ fn cmac_aes_128_32_bit_counter_before_iter_512_bit() {
     let fixed_input = hex::decode("7d2bba9a4b121a33bc54b5515df6014407710d698d9d768a9a096a0faeb3ad2cb15ed63d9b6490e7647c814b8bac2a842662e7").expect("Failed to decode fixed input");
 
     let key = AesCmacKey::new(key.as_slice()).expect("Failed to load AES Cmac Key");
-    let mut prf = AesCmac::new(Cipher::aes_128_cbc());
+    let mut prf = AesCmac::new();
 
     let mode = KDFMode::DoublePipelineIterationMode(DoublePipelineIterationMode {
         counter_length: Some(32),
@@ -63,7 +62,7 @@ fn cmac_aes_128_32_bit_counter_after_iter_512_bit() {
     let fixed_input = hex::decode("daefcc52d6e32e1614109268933087fce3d64a5a6f111ba1a8d343a1e388a1752aaea93853be52864997a81c84b04c4f3ff3bd").expect("Failed to decode fixed input");
 
     let key = AesCmacKey::new(key.as_slice()).expect("Failed to load AES Cmac Key");
-    let mut prf = AesCmac::new(Cipher::aes_128_cbc());
+    let mut prf = AesCmac::new();
 
     let mode = KDFMode::DoublePipelineIterationMode(DoublePipelineIterationMode {
         counter_length: Some(32),
@@ -89,7 +88,7 @@ fn cmac_aes_128_32_bit_counter_after_fixed_512_bit() {
     let fixed_input = hex::decode("13d47f74b114e79a80a04d281389731d7dfca2b5753036782b8790a97003fa50a5653dda69fc4cc7a79ba59497c17025dbc3fb").expect("Failed to decode fixed input");
 
     let key = AesCmacKey::new(key.as_slice()).expect("Failed to load AES Cmac Key");
-    let mut prf = AesCmac::new(Cipher::aes_128_cbc());
+    let mut prf = AesCmac::new();
 
     let mode = KDFMode::DoublePipelineIterationMode(DoublePipelineIterationMode {
         counter_length: Some(32),

@@ -68,7 +68,11 @@ unused_results
 
 mod error;
 
+use generic_array::{ArrayLength, GenericArray};
+use typenum::ToInt;
 pub use error::*;
+
+use zeroize::Zeroize;
 
 /// Defines how a PseudoRandomFunction handles a key
 pub trait PseudoRandomFunctionKey {
@@ -86,8 +90,8 @@ pub trait PseudoRandomFunctionKey {
 pub trait PseudoRandomFunction<'a> {
     /// The type kf key handle the PRF is expecting
     type KeyHandle;
-    /// The output size of the PRF, in bits
-    fn prf_output_size_in_bits(&self) -> usize;
+    /// The PRF output size
+    type PrfOutputSize: ArrayLength<u8> + ToInt<usize>;
 
     /// Initializes the pseudo random function
     ///
@@ -138,24 +142,6 @@ pub trait PseudoRandomFunction<'a> {
     /// This function is allowed to panic if [`prf_final`](PseudoRandomFunction::prf_final)
     /// is called before [`prf_init`](PseudoRandomFunction::prf_init)
     fn prf_final(&mut self, out: &mut [u8]) -> Result<usize, Error>;
-
-    /// Finishes the PRF and returns the result in a `Vec<u8>`
-    ///
-    /// # Returns
-    ///
-    /// Either the result in a `Vec<u8>` or an [`Error`]
-    ///
-    /// # Panics
-    ///
-    /// This function is allowed to panic if [`prf_final_vec`](PseudoRandomFunction::prf_final_vec)
-    /// is called before [`prf_init`](PseudoRandomFunction::prf_init)
-    fn prf_final_vec(&mut self) -> Result<Vec<u8>, Error> {
-        let mut out = vec![0; self.prf_output_size_in_bits() / 8];
-
-        let size = self.prf_final(out.as_mut_slice())?;
-        out.truncate(size);
-        Ok(out)
-    }
 }
 
 /// Counter mode options
@@ -279,8 +265,9 @@ fn kbkdf_counter<'a, T: PseudoRandomFunction<'a>>(
     derived_key: &mut [u8],
 ) -> Result<(), Error> {
     // Step 1 -> n = CEIL(L/h)
-    let n = calculate_counter(derived_key.len() * 8, prf.prf_output_size_in_bits());
-    let mut intermediate_key = vec![0; prf.prf_output_size_in_bits() / 8];
+    let n = calculate_counter(derived_key.len() * 8, T::PrfOutputSize::to_int()*8);
+    let mut intermediate_key = GenericArray::<u8, T::PrfOutputSize>::default();
+
     let length = (derived_key.len() as u32).to_be_bytes();
     if n > 2_usize.pow(counter_mode.counter_length as u32) - 1 {
         Err(Error::InvalidDerivedKeyLen)
@@ -321,9 +308,11 @@ fn kbkdf_counter<'a, T: PseudoRandomFunction<'a>>(
             }
             let _ = prf.prf_final(intermediate_key.as_mut_slice())?;
             result.extend_from_slice(intermediate_key.as_slice());
+            intermediate_key.zeroize();
         }
 
         derived_key.clone_from_slice(&result[..derived_key.len()]);
+        result.zeroize();
         Ok(())
     }
 }
@@ -335,8 +324,8 @@ fn kbkdf_double_pipeline<'a, T: PseudoRandomFunction<'a>>(
     prf: &mut T,
     derived_key: &mut [u8],
 ) -> Result<(), Error> {
-    let n = calculate_counter(derived_key.len() * 8, prf.prf_output_size_in_bits());
-    let mut intermediate_key = vec![0; prf.prf_output_size_in_bits() / 8];
+    let n = calculate_counter(derived_key.len() * 8, T::PrfOutputSize::to_int()*8);
+    let mut intermediate_key = GenericArray::<u8, T::PrfOutputSize>::default();
     let length = (derived_key.len() as u32).to_be_bytes();
     if n > 2_usize.pow(32) - 1 {
         Err(Error::InvalidDerivedKeyLen)
@@ -353,7 +342,7 @@ fn kbkdf_double_pipeline<'a, T: PseudoRandomFunction<'a>>(
                 feedback
             }
         };
-        assert!(feedback.len() >= (prf.prf_output_size_in_bits() / 8));
+        assert!(feedback.len() >= T::PrfOutputSize::to_int());
         for i in 1..=n {
             let counter = i.to_be_bytes();
             let counter = feedback_counter(double_feedback.counter_length, counter.as_slice());
@@ -411,14 +400,13 @@ fn kbkdf_double_pipeline<'a, T: PseudoRandomFunction<'a>>(
                 }
             }
 
-            if intermediate_key.is_empty() {
-                intermediate_key.resize(prf.prf_output_size_in_bits() / 8, 0);
-            }
             let _ = prf.prf_final(intermediate_key.as_mut_slice())?;
             result.extend_from_slice(intermediate_key.as_slice());
+            intermediate_key.zeroize();
         }
 
         derived_key.clone_from_slice(&result[..derived_key.len()]);
+        result.zeroize();
         Ok(())
     }
 }
@@ -430,11 +418,13 @@ fn kbkdf_feedback<'a, T: PseudoRandomFunction<'a>>(
     prf: &mut T,
     derived_key: &mut [u8],
 ) -> Result<(), Error> {
-    let n = calculate_counter(derived_key.len() * 8, prf.prf_output_size_in_bits());
-    let mut intermediate_key = match feedback_mode.iv {
-        None => vec![],
-        Some(iv) => iv.to_vec(),
-    };
+    let n = calculate_counter(derived_key.len() * 8, T::PrfOutputSize::to_int()*8);
+    let mut intermediate_key = GenericArray::<u8, T::PrfOutputSize>::default();
+    let mut has_intermediate = feedback_mode.iv.is_some();
+    if let Some(iv) = feedback_mode.iv {
+        assert_eq!(iv.len(), T::PrfOutputSize::to_int());
+        intermediate_key.copy_from_slice(iv);
+    }
     let length = (derived_key.len() as u32).to_be_bytes();
     if n > 2_usize.pow(32) - 1 {
         Err(Error::InvalidDerivedKeyLen)
@@ -448,25 +438,25 @@ fn kbkdf_feedback<'a, T: PseudoRandomFunction<'a>>(
                 InputType::FixedInput(fixed_input) => {
                     match fixed_input.counter_location {
                         CounterLocation::NoCounter => {
-                            prf.prf_update(intermediate_key.as_slice())?;
+                            if has_intermediate { prf.prf_update(intermediate_key.as_slice())?; }
                             prf.prf_update(fixed_input.fixed_input)?;
                         }
                         CounterLocation::BeforeIter => {
                             prf.prf_update(counter.expect(
                                 "Counter length not provided for BeforeIter counter location",
                             ))?;
-                            prf.prf_update(intermediate_key.as_slice())?;
+                            if has_intermediate { prf.prf_update(intermediate_key.as_slice())?; }
                             prf.prf_update(fixed_input.fixed_input)?;
                         }
                         CounterLocation::AfterIter => {
-                            prf.prf_update(intermediate_key.as_slice())?;
+                            if has_intermediate { prf.prf_update(intermediate_key.as_slice())?; }
                             prf.prf_update(counter.expect(
                                 "Counter length not provided for AfterIter counter location",
                             ))?;
                             prf.prf_update(fixed_input.fixed_input)?;
                         }
                         CounterLocation::AfterFixedInput => {
-                            prf.prf_update(intermediate_key.as_slice())?;
+                            if has_intermediate { prf.prf_update(intermediate_key.as_slice())?; }
                             prf.prf_update(fixed_input.fixed_input)?;
                             prf.prf_update(counter.expect(
                                 "Counter length not provided for AfterFixedInput counter location",
@@ -479,7 +469,7 @@ fn kbkdf_feedback<'a, T: PseudoRandomFunction<'a>>(
                     }
                 }
                 InputType::SpecifiedInput(specified_input) => {
-                    prf.prf_update(intermediate_key.as_slice())?;
+                    if has_intermediate { prf.prf_update(intermediate_key.as_slice())?; }
                     if let Some(counter) = counter {
                         prf.prf_update(counter)?;
                     }
@@ -489,14 +479,13 @@ fn kbkdf_feedback<'a, T: PseudoRandomFunction<'a>>(
                     prf.prf_update(&length)?;
                 }
             }
-            if intermediate_key.is_empty() {
-                intermediate_key.resize(prf.prf_output_size_in_bits() / 8, 0);
-            }
             let _ = prf.prf_final(intermediate_key.as_mut_slice())?;
             result.extend_from_slice(intermediate_key.as_slice());
+            has_intermediate = true;
         }
 
         derived_key.clone_from_slice(&result[..derived_key.len()]);
+        result.zeroize();
         Ok(())
     }
 }

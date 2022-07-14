@@ -3,7 +3,6 @@ mod aes_cmac_prf;
 use aes_cmac_prf::*;
 
 use rust_kbkdf::{kbkdf, CounterLocation, FeedbackMode, FixedInput, InputType, KDFMode};
-use openssl::symm::Cipher;
 
 #[test]
 fn cmac_aes_128_no_counter_512_bit_output_with_iv() {
@@ -12,7 +11,7 @@ fn cmac_aes_128_no_counter_512_bit_output_with_iv() {
     let fixed_input = hex::decode("62afe5fed91e797221a854336b0aadd8a05ad0e3c8345729897b2efcec5a1178a2fa4c063007b67a7015e0d6b7271ea8d86b44").expect("Failed to decode fixed input");
 
     let key = AesCmacKey::new(key.as_slice()).expect("Failed to load AES Cmac Key");
-    let mut prf = AesCmac::new(Cipher::aes_128_cbc());
+    let mut prf = AesCmac::new();
 
     let mode = KDFMode::FeedbackMode(FeedbackMode {
         iv: Some(iv.as_slice()),
@@ -39,7 +38,7 @@ fn cmac_aes_128_no_counter_512_bit_output_no_iv() {
     let fixed_input = hex::decode("4d91720a2cff429fc1c0b79e845c5029b3c9535935cbeee5808dea82b8453ffcbed8f54e44500fd82ded679f843c569297ed82").expect("Failed to decode fixed input");
 
     let key = AesCmacKey::new(key.as_slice()).expect("Failed to load AES Cmac Key");
-    let mut prf = AesCmac::new(Cipher::aes_128_cbc());
+    let mut prf = AesCmac::new();
 
     let mode = KDFMode::FeedbackMode(FeedbackMode {
         iv: None,
@@ -67,7 +66,7 @@ fn cmac_aes_128_32_bit_counter_before_iter_512_bit_output_iv() {
     let fixed_input = hex::decode("8068d7b98b8c4528ae8555ab5ae67c71a92b664245ec7d333b22479c5072421e7239761494e45eff09297737a1bb2c39fe9f1f").expect("Failed to decode fixed input");
 
     let key = AesCmacKey::new(key.as_slice()).expect("Failed to load AES Cmac Key");
-    let mut prf = AesCmac::new(Cipher::aes_128_cbc());
+    let mut prf = AesCmac::new();
 
     let mode = KDFMode::FeedbackMode(FeedbackMode {
         iv: Some(iv.as_slice()),
@@ -95,7 +94,7 @@ fn cmac_aes_128_32_bit_counter_after_iter_512_bit_output_iv() {
     let fixed_input = hex::decode("d465d19beb40b57d51eb30f9b8170f33a07ffbf03e41b6ade6338cb85d75b910bc0af62e3a228bacaf68eb099d1d315ce09395").expect("Failed to decode fixed input");
 
     let key = AesCmacKey::new(key.as_slice()).expect("Failed to load AES Cmac Key");
-    let mut prf = AesCmac::new(Cipher::aes_128_cbc());
+    let mut prf = AesCmac::new();
 
     let mode = KDFMode::FeedbackMode(FeedbackMode {
         iv: Some(iv.as_slice()),
@@ -123,7 +122,7 @@ fn cmac_aes_128_32_bit_counter_after_fixed_512_bit_output_iv() {
     let fixed_input = hex::decode("a74a8c3b5b6c504f1b72b0f22ed380de8eff38f541d0991dd2f54c2259a2ea9e6907a3528e6fd5591aff710685308adc97d423").expect("Failed to decode fixed input");
 
     let key = AesCmacKey::new(key.as_slice()).expect("Failed to load AES Cmac Key");
-    let mut prf = AesCmac::new(Cipher::aes_128_cbc());
+    let mut prf = AesCmac::new();
 
     let mode = KDFMode::FeedbackMode(FeedbackMode {
         iv: Some(iv.as_slice()),
