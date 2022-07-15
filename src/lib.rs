@@ -270,7 +270,7 @@ fn kbkdf_counter<'a, T: PseudoRandomFunction<'a>>(
 
     let length = (derived_key.len() as u32).to_be_bytes();
     assert!(
-        n <= 2_usize.pow(counter_mode.counter_length as u32) - 1,
+        n < 2_usize.pow(counter_mode.counter_length as u32),
         "Invalid derived key length"
     );
     for i in 1..=n {
@@ -326,7 +326,7 @@ fn kbkdf_double_pipeline<'a, T: PseudoRandomFunction<'a>>(
     let mut feedback = GenericArray::<u8, T::PrfOutputSize>::default();
     let length = (derived_key.len() as u32).to_be_bytes();
     assert!(
-        n <= 2_usize.pow(32) - 1,
+        n < 2_usize.pow(32),
         "Invalid length provided for derived key"
     );
     for i in 1..=n {
@@ -422,10 +422,7 @@ fn kbkdf_feedback<'a, T: PseudoRandomFunction<'a>>(
         intermediate_key.copy_from_slice(iv);
     }
     let length = (derived_key.len() as u32).to_be_bytes();
-    assert!(
-        n <= 2_usize.pow(32) - 1,
-        "Invalid derived_key length provided"
-    );
+    assert!(n < 2_usize.pow(32), "Invalid derived_key length provided");
     for i in 1..=n {
         prf.init(key)?;
         let counter = i.to_be_bytes();

@@ -44,16 +44,15 @@ impl AesCmac<'_> {
     }
 
     fn update_internal(&mut self, msg: &[u8]) -> Result<(), ErrorStack> {
-        Ok(self
-            .signer
+        self.signer
             .as_mut()
             .expect("update called before init")
-            .update(msg)?)
+            .update(msg)
     }
 
     fn finish_internal(&mut self, out: &mut [u8]) -> Result<usize, ErrorStack> {
         let signer = self.signer.take().expect("finish called before init");
-        Ok(signer.sign(out)?)
+        signer.sign(out)
     }
 }
 
