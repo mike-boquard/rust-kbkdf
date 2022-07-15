@@ -43,25 +43,22 @@ impl AesCmac<'_> {
         Self { signer: None }
     }
 
-    fn prf_update_internal(&mut self, msg: &[u8]) -> Result<(), ErrorStack> {
+    fn update_internal(&mut self, msg: &[u8]) -> Result<(), ErrorStack> {
         Ok(self
             .signer
             .as_mut()
-            .expect("prf_update called before prf_init")
+            .expect("update called before init")
             .update(msg)?)
     }
 
-    fn prf_final_internal(&mut self, out: &mut [u8]) -> Result<usize, ErrorStack> {
-        let signer = self
-            .signer
-            .take()
-            .expect("prf_final called before prf_init");
+    fn finish_internal(&mut self, out: &mut [u8]) -> Result<usize, ErrorStack> {
+        let signer = self.signer.take().expect("finish called before init");
         Ok(signer.sign(out)?)
     }
 }
 
 impl<'a> AesCmac<'a> {
-    fn prf_init_internal(&mut self, key: &'a PKey<Private>) -> Result<(), ErrorStack> {
+    fn init_internal(&mut self, key: &'a PKey<Private>) -> Result<(), ErrorStack> {
         assert!(self.signer.is_none());
         assert_eq!(key.id(), Id::CMAC);
         self.signer = Some(Signer::new_without_digest(key)?);
@@ -74,18 +71,18 @@ impl<'a> PseudoRandomFunction<'a> for AesCmac<'a> {
     type PrfOutputSize = typenum::U16;
     type Error = ErrorStack;
 
-    fn prf_init(
+    fn init(
         &mut self,
         key: &'a dyn PseudoRandomFunctionKey<KeyHandle = Self::KeyHandle>,
     ) -> Result<(), Self::Error> {
-        self.prf_init_internal(key.key_handle())
+        self.init_internal(key.key_handle())
     }
 
-    fn prf_update(&mut self, msg: &[u8]) -> Result<(), Self::Error> {
-        self.prf_update_internal(msg)
+    fn update(&mut self, msg: &[u8]) -> Result<(), Self::Error> {
+        self.update_internal(msg)
     }
 
-    fn prf_final(&mut self, out: &mut [u8]) -> Result<usize, Self::Error> {
-        self.prf_final_internal(out)
+    fn finish(&mut self, out: &mut [u8]) -> Result<usize, Self::Error> {
+        self.finish_internal(out)
     }
 }

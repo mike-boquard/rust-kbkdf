@@ -105,8 +105,8 @@ pub trait PseudoRandomFunction<'a> {
     ///
     /// # Panics
     ///
-    /// This function is allowed to panic if [`prf_init`](PseudoRandomFunction::prf_init) is called while already initialized
-    fn prf_init(
+    /// This function is allowed to panic if [`init`](PseudoRandomFunction::init) is called while already initialized
+    fn init(
         &mut self,
         key: &'a dyn PseudoRandomFunctionKey<KeyHandle = Self::KeyHandle>,
     ) -> Result<(), Self::Error>;
@@ -123,9 +123,9 @@ pub trait PseudoRandomFunction<'a> {
     ///
     /// # Panics
     ///
-    /// This function is allowed to panic if [`prf_update`](PseudoRandomFunction::prf_update)
-    /// is called before [`prf_init`](PseudoRandomFunction::prf_init)
-    fn prf_update(&mut self, msg: &[u8]) -> Result<(), Self::Error>;
+    /// This function is allowed to panic if [`update`](PseudoRandomFunction::update)
+    /// is called before [`init`](PseudoRandomFunction::init)
+    fn update(&mut self, msg: &[u8]) -> Result<(), Self::Error>;
 
     /// Finishes the PRF and returns the value in a buffer
     ///
@@ -139,9 +139,9 @@ pub trait PseudoRandomFunction<'a> {
     ///
     /// # Panics
     ///
-    /// This function is allowed to panic if [`prf_final`](PseudoRandomFunction::prf_final)
-    /// is called before [`prf_init`](PseudoRandomFunction::prf_init)
-    fn prf_final(&mut self, out: &mut [u8]) -> Result<usize, Self::Error>;
+    /// This function is allowed to panic if [`finish`](PseudoRandomFunction::finish)
+    /// is called before [`init`](PseudoRandomFunction::init)
+    fn finish(&mut self, out: &mut [u8]) -> Result<usize, Self::Error>;
 }
 
 /// Counter mode options
@@ -274,24 +274,24 @@ fn kbkdf_counter<'a, T: PseudoRandomFunction<'a>>(
         "Invalid derived key length"
     );
     for i in 1..=n {
-        prf.prf_init(key)?;
+        prf.init(key)?;
         let counter = i.to_be_bytes();
         let counter = &counter[(counter.len() - counter_mode.counter_length / 8)..];
         match input_type {
             InputType::FixedInput(fixed_input) => match fixed_input.counter_location {
-                CounterLocation::NoCounter => prf.prf_update(fixed_input.fixed_input)?,
+                CounterLocation::NoCounter => prf.update(fixed_input.fixed_input)?,
                 CounterLocation::BeforeFixedInput => {
-                    prf.prf_update(counter)?;
-                    prf.prf_update(fixed_input.fixed_input)?;
+                    prf.update(counter)?;
+                    prf.update(fixed_input.fixed_input)?;
                 }
                 CounterLocation::MiddleOfFixedInput(position) => {
-                    prf.prf_update(&fixed_input.fixed_input[..position])?;
-                    prf.prf_update(counter)?;
-                    prf.prf_update(&fixed_input.fixed_input[position..])?;
+                    prf.update(&fixed_input.fixed_input[..position])?;
+                    prf.update(counter)?;
+                    prf.update(&fixed_input.fixed_input[position..])?;
                 }
                 CounterLocation::AfterFixedInput => {
-                    prf.prf_update(fixed_input.fixed_input)?;
-                    prf.prf_update(counter)?;
+                    prf.update(fixed_input.fixed_input)?;
+                    prf.update(counter)?;
                 }
                 _ => panic!(
                     "Invalid counter location for KBKDF In Counter Mode: {:?}",
@@ -299,14 +299,14 @@ fn kbkdf_counter<'a, T: PseudoRandomFunction<'a>>(
                 ),
             },
             InputType::SpecifiedInput(specified_input) => {
-                prf.prf_update(counter)?;
-                prf.prf_update(specified_input.label)?;
-                prf.prf_update(b"0")?;
-                prf.prf_update(specified_input.context)?;
-                prf.prf_update(&length)?;
+                prf.update(counter)?;
+                prf.update(specified_input.label)?;
+                prf.update(b"0")?;
+                prf.update(specified_input.context)?;
+                prf.update(&length)?;
             }
         }
-        let _ = prf.prf_final(intermediate_key.as_mut_slice())?;
+        let _ = prf.finish(intermediate_key.as_mut_slice())?;
         insert_result(i, intermediate_key.as_slice(), derived_key);
         intermediate_key.zeroize();
     }
@@ -333,54 +333,54 @@ fn kbkdf_double_pipeline<'a, T: PseudoRandomFunction<'a>>(
         let counter = i.to_be_bytes();
         let counter = feedback_counter(double_feedback.counter_length, counter.as_slice());
         // First calculate feedback, if the first iteration use the provided input vaalue
-        prf.prf_init(key)?;
+        prf.init(key)?;
         if i == 1 {
             match input_type {
                 InputType::FixedInput(fixed_input) => {
-                    prf.prf_update(fixed_input.fixed_input)?;
+                    prf.update(fixed_input.fixed_input)?;
                 }
                 InputType::SpecifiedInput(specified_input) => {
-                    prf.prf_update(specified_input.label)?;
-                    prf.prf_update(b"0")?;
-                    prf.prf_update(specified_input.context)?;
-                    prf.prf_update(length.as_slice())?;
+                    prf.update(specified_input.label)?;
+                    prf.update(b"0")?;
+                    prf.update(specified_input.context)?;
+                    prf.update(length.as_slice())?;
                 }
             }
         } else {
-            prf.prf_update(feedback.as_slice())?;
+            prf.update(feedback.as_slice())?;
         }
-        let _ = prf.prf_final(feedback.as_mut_slice())?;
+        let _ = prf.finish(feedback.as_mut_slice())?;
 
-        prf.prf_init(key)?;
+        prf.init(key)?;
 
         match input_type {
             InputType::FixedInput(fixed_input) => match fixed_input.counter_location {
                 CounterLocation::NoCounter => {
-                    prf.prf_update(feedback.as_slice())?;
-                    prf.prf_update(fixed_input.fixed_input)?;
+                    prf.update(feedback.as_slice())?;
+                    prf.update(fixed_input.fixed_input)?;
                 }
                 CounterLocation::BeforeIter => {
-                    prf.prf_update(
+                    prf.update(
                         counter
                             .expect("Counter length not provided for BeforeIter counter location"),
                     )?;
-                    prf.prf_update(feedback.as_slice())?;
-                    prf.prf_update(fixed_input.fixed_input)?;
+                    prf.update(feedback.as_slice())?;
+                    prf.update(fixed_input.fixed_input)?;
                 }
                 CounterLocation::AfterFixedInput => {
-                    prf.prf_update(feedback.as_slice())?;
-                    prf.prf_update(fixed_input.fixed_input)?;
-                    prf.prf_update(counter.expect(
+                    prf.update(feedback.as_slice())?;
+                    prf.update(fixed_input.fixed_input)?;
+                    prf.update(counter.expect(
                         "Counter length not provided for AfterFixedInput counter location",
                     ))?;
                 }
                 CounterLocation::AfterIter => {
-                    prf.prf_update(feedback.as_slice())?;
-                    prf.prf_update(
+                    prf.update(feedback.as_slice())?;
+                    prf.update(
                         counter
                             .expect("Counter length not provided for AfterIter counter location"),
                     )?;
-                    prf.prf_update(fixed_input.fixed_input)?;
+                    prf.update(fixed_input.fixed_input)?;
                 }
                 _ => panic!(
                     "Invalid counter location for double feedback: {:?}",
@@ -388,18 +388,18 @@ fn kbkdf_double_pipeline<'a, T: PseudoRandomFunction<'a>>(
                 ),
             },
             InputType::SpecifiedInput(specified_input) => {
-                prf.prf_update(feedback.as_slice())?;
+                prf.update(feedback.as_slice())?;
                 if let Some(counter) = counter {
-                    prf.prf_update(counter)?;
+                    prf.update(counter)?;
                 }
-                prf.prf_update(specified_input.label)?;
-                prf.prf_update(b"0")?;
-                prf.prf_update(specified_input.context)?;
-                prf.prf_update(&length)?;
+                prf.update(specified_input.label)?;
+                prf.update(b"0")?;
+                prf.update(specified_input.context)?;
+                prf.update(&length)?;
             }
         }
 
-        let _ = prf.prf_final(intermediate_key.as_mut_slice())?;
+        let _ = prf.finish(intermediate_key.as_mut_slice())?;
         insert_result(i, intermediate_key.as_slice(), derived_key);
         intermediate_key.zeroize();
     }
@@ -427,43 +427,43 @@ fn kbkdf_feedback<'a, T: PseudoRandomFunction<'a>>(
         "Invalid derived_key length provided"
     );
     for i in 1..=n {
-        prf.prf_init(key)?;
+        prf.init(key)?;
         let counter = i.to_be_bytes();
         let counter = feedback_counter(feedback_mode.counter_length, counter.as_slice());
         match input_type {
             InputType::FixedInput(fixed_input) => match fixed_input.counter_location {
                 CounterLocation::NoCounter => {
                     if has_intermediate {
-                        prf.prf_update(intermediate_key.as_slice())?;
+                        prf.update(intermediate_key.as_slice())?;
                     }
-                    prf.prf_update(fixed_input.fixed_input)?;
+                    prf.update(fixed_input.fixed_input)?;
                 }
                 CounterLocation::BeforeIter => {
-                    prf.prf_update(
+                    prf.update(
                         counter
                             .expect("Counter length not provided for BeforeIter counter location"),
                     )?;
                     if has_intermediate {
-                        prf.prf_update(intermediate_key.as_slice())?;
+                        prf.update(intermediate_key.as_slice())?;
                     }
-                    prf.prf_update(fixed_input.fixed_input)?;
+                    prf.update(fixed_input.fixed_input)?;
                 }
                 CounterLocation::AfterIter => {
                     if has_intermediate {
-                        prf.prf_update(intermediate_key.as_slice())?;
+                        prf.update(intermediate_key.as_slice())?;
                     }
-                    prf.prf_update(
+                    prf.update(
                         counter
                             .expect("Counter length not provided for AfterIter counter location"),
                     )?;
-                    prf.prf_update(fixed_input.fixed_input)?;
+                    prf.update(fixed_input.fixed_input)?;
                 }
                 CounterLocation::AfterFixedInput => {
                     if has_intermediate {
-                        prf.prf_update(intermediate_key.as_slice())?;
+                        prf.update(intermediate_key.as_slice())?;
                     }
-                    prf.prf_update(fixed_input.fixed_input)?;
-                    prf.prf_update(counter.expect(
+                    prf.update(fixed_input.fixed_input)?;
+                    prf.update(counter.expect(
                         "Counter length not provided for AfterFixedInput counter location",
                     ))?;
                 }
@@ -474,18 +474,18 @@ fn kbkdf_feedback<'a, T: PseudoRandomFunction<'a>>(
             },
             InputType::SpecifiedInput(specified_input) => {
                 if has_intermediate {
-                    prf.prf_update(intermediate_key.as_slice())?;
+                    prf.update(intermediate_key.as_slice())?;
                 }
                 if let Some(counter) = counter {
-                    prf.prf_update(counter)?;
+                    prf.update(counter)?;
                 }
-                prf.prf_update(specified_input.label)?;
-                prf.prf_update(b"0")?;
-                prf.prf_update(specified_input.context)?;
-                prf.prf_update(&length)?;
+                prf.update(specified_input.label)?;
+                prf.update(b"0")?;
+                prf.update(specified_input.context)?;
+                prf.update(&length)?;
             }
         }
-        let _ = prf.prf_final(intermediate_key.as_mut_slice())?;
+        let _ = prf.finish(intermediate_key.as_mut_slice())?;
         insert_result(i, intermediate_key.as_slice(), derived_key);
         has_intermediate = true;
     }
