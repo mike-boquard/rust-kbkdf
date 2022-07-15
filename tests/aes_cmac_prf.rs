@@ -1,9 +1,8 @@
-use rust_kbkdf::{Error, PseudoRandomFunction, PseudoRandomFunctionKey};
 use openssl::error::ErrorStack;
 use openssl::pkey::{Id, PKey, Private};
 use openssl::sign::Signer;
 use openssl::symm::Cipher;
-use std::fmt::Formatter;
+use rust_kbkdf::{PseudoRandomFunction, PseudoRandomFunctionKey};
 
 pub struct AesCmacKey {
     key: PKey<Private>,
@@ -14,7 +13,7 @@ impl AesCmacKey {
         Self { key }
     }
 
-    pub fn new(key: &[u8]) -> Result<Self, SSLError> {
+    pub fn new(key: &[u8]) -> Result<Self, ErrorStack> {
         let cipher = match key.len() {
             16 => Cipher::aes_128_cbc(),
             24 => Cipher::aes_192_cbc(),
@@ -41,12 +40,10 @@ pub struct AesCmac<'a> {
 
 impl AesCmac<'_> {
     pub fn new() -> Self {
-        Self {
-            signer: None,
-        }
+        Self { signer: None }
     }
 
-    fn prf_update_internal(&mut self, msg: &[u8]) -> Result<(), SSLError> {
+    fn prf_update_internal(&mut self, msg: &[u8]) -> Result<(), ErrorStack> {
         Ok(self
             .signer
             .as_mut()
@@ -54,7 +51,7 @@ impl AesCmac<'_> {
             .update(msg)?)
     }
 
-    fn prf_final_internal(&mut self, out: &mut [u8]) -> Result<usize, SSLError> {
+    fn prf_final_internal(&mut self, out: &mut [u8]) -> Result<usize, ErrorStack> {
         let signer = self
             .signer
             .take()
@@ -64,7 +61,7 @@ impl AesCmac<'_> {
 }
 
 impl<'a> AesCmac<'a> {
-    fn prf_init_internal(&mut self, key: &'a PKey<Private>) -> Result<(), SSLError> {
+    fn prf_init_internal(&mut self, key: &'a PKey<Private>) -> Result<(), ErrorStack> {
         assert!(self.signer.is_none());
         assert_eq!(key.id(), Id::CMAC);
         self.signer = Some(Signer::new_without_digest(key)?);
@@ -72,47 +69,23 @@ impl<'a> AesCmac<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct SSLError {
-    stack: ErrorStack,
-}
-
-impl std::fmt::Display for SSLError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.stack)
-    }
-}
-
-impl std::error::Error for SSLError {}
-
-impl From<ErrorStack> for SSLError {
-    fn from(stack: ErrorStack) -> Self {
-        Self { stack }
-    }
-}
-
-impl From<SSLError> for Error {
-    fn from(ssl_error: SSLError) -> Self {
-        Self::ImplementationError(format!("{}", ssl_error.stack))
-    }
-}
-
 impl<'a> PseudoRandomFunction<'a> for AesCmac<'a> {
     type KeyHandle = PKey<Private>;
     type PrfOutputSize = typenum::U16;
+    type Error = ErrorStack;
 
     fn prf_init(
         &mut self,
         key: &'a dyn PseudoRandomFunctionKey<KeyHandle = Self::KeyHandle>,
-    ) -> Result<(), Error> {
-        Ok(self.prf_init_internal(key.key_handle())?)
+    ) -> Result<(), Self::Error> {
+        self.prf_init_internal(key.key_handle())
     }
 
-    fn prf_update(&mut self, msg: &[u8]) -> Result<(), Error> {
-        Ok(self.prf_update_internal(msg)?)
+    fn prf_update(&mut self, msg: &[u8]) -> Result<(), Self::Error> {
+        self.prf_update_internal(msg)
     }
 
-    fn prf_final(&mut self, out: &mut [u8]) -> Result<usize, Error> {
-        Ok(self.prf_final_internal(out)?)
+    fn prf_final(&mut self, out: &mut [u8]) -> Result<usize, Self::Error> {
+        self.prf_final_internal(out)
     }
 }

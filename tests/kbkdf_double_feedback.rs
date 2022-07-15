@@ -2,7 +2,9 @@ mod aes_cmac_prf;
 
 use aes_cmac_prf::*;
 
-use rust_kbkdf::{kbkdf, CounterLocation, DoublePipelineIterationMode, FixedInput, InputType, KDFMode};
+use rust_kbkdf::{
+    kbkdf, CounterLocation, DoublePipelineIterationMode, FixedInput, InputType, KDFMode,
+};
 
 #[test]
 fn cmac_aes_128_no_counter_512_bit_output() {
