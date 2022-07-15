@@ -1,6 +1,6 @@
 [package]
 name = "rust-kbkdf"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2021"
 authors = ["Michael Boquard <michael.j.boquard@gmail.com>"]
 description = "SP800-108 Key Based Key Derivation Using Pseudorandom Functions"
